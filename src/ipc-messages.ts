@@ -43,4 +43,16 @@ export const IpcMessages = {
 
   // Clipboard
   CLIPBOARD_WRITE: "clippy_clipboard_write",
+
+  // Hermes
+  HERMES_CREATE_SESSION: "clippy_hermes_create_session",
+  HERMES_CHAT_STREAM: "clippy_hermes_chat_stream",
+  HERMES_CHAT_CHUNK: "clippy_hermes_chat_chunk",
+  HERMES_CHAT_DONE: "clippy_hermes_chat_done",
+  HERMES_CHAT_ERROR: "clippy_hermes_chat_error",
+  HERMES_ABORT_REQUEST: "clippy_hermes_abort_request",
+
+  // Chat window lifecycle
+  OPEN_CHAT_WINDOW: "clippy_open_chat_window",
+  SET_ANIMATION_KEY: "clippy_set_animation_key",
 };

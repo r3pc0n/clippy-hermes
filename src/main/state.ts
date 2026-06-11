@@ -1,4 +1,5 @@
 import Store from "electron-store";
+import { BrowserWindow } from "electron";
 
 import { getChatWindow, getMainWindow, setFont, setFontSize } from "./windows";
 import { IpcMessages } from "../ipc-messages";
@@ -146,7 +147,9 @@ export class StateManager {
    * @param newValue
    */
   public onDidAnyChange(newValue: SharedState = this.store.store) {
-    getMainWindow()?.webContents.send(IpcMessages.STATE_CHANGED, newValue);
+    BrowserWindow.getAllWindows().forEach((win) =>
+      win.webContents.send(IpcMessages.STATE_CHANGED, newValue),
+    );
   }
 }
 

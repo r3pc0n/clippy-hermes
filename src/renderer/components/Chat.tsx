@@ -4,7 +4,8 @@ import { Message } from "./Message";
 import { ChatInput } from "./ChatInput";
 import { ANIMATION_KEYS_BRACKETS } from "../clippy-animation-helpers";
 import { useChat } from "../contexts/ChatContext";
-import { electronAi } from "../clippyApi";
+import { streamHermesChat, abortHermesRequest } from "../hermesApi";
+import { clippyApi } from "../clippyApi";
 
 export type ChatProps = {
   style?: React.CSSProperties;
@@ -20,7 +21,7 @@ export function Chat({ style }: ChatProps) {
   );
 
   const handleAbortMessage = () => {
-    electronAi.abortRequest(lastRequestUUID);
+    abortHermesRequest(lastRequestUUID);
   };
 
   const handleSendMessage = async (message: string) => {
@@ -43,9 +44,7 @@ export function Chat({ style }: ChatProps) {
       const requestUUID = crypto.randomUUID();
       setLastRequestUUID(requestUUID);
 
-      const response = await window.electronAi.promptStreaming(message, {
-        requestUUID,
-      });
+      const response = streamHermesChat(message, requestUUID);
 
       let fullContent = "";
       let filteredContent = "";
@@ -66,6 +65,7 @@ export function Chat({ style }: ChatProps) {
 
           if (animationKey) {
             setAnimationKey(animationKey);
+            clippyApi.triggerClippyAnimation(animationKey).catch(() => {});
             hasSetAnimationKey = true;
           }
         } else {

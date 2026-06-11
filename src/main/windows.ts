@@ -8,6 +8,7 @@ import { getDebugManager } from "./debug";
 import { popupAppMenu } from "./menu";
 
 let mainWindow: BrowserWindow | undefined;
+let chatWindow: BrowserWindow | undefined;
 
 /**
  * Get the main window
@@ -50,6 +51,8 @@ export async function createMainWindow() {
     alwaysOnTop: settings.clippyAlwaysOnTop,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      sandbox: false,
     },
   });
 
@@ -140,6 +143,11 @@ export function setupWindowOpenHandler(browserWindow: BrowserWindow) {
         minWidth: 400,
         alwaysOnTop: getStateManager().store.get("settings").chatAlwaysOnTop,
         parent: browserWindow,
+        webPreferences: {
+          preload: path.join(__dirname, "preload.js"),
+          contextIsolation: true,
+          sandbox: false,
+        },
       },
     };
   });
@@ -208,17 +216,58 @@ export function getPopoverWindowPosition(
  * @returns The chat window
  */
 export function getChatWindow(): BrowserWindow | undefined {
-  return BrowserWindow.getAllWindows().find(isChatWindow);
+  if (chatWindow && !chatWindow.isDestroyed()) return chatWindow;
+  return undefined;
 }
 
 /**
- * Check if a window is a chat window
- *
- * @param window The window to check
- * @returns True if the window is a chat window
+ * Create the chat window, or show/focus it if it already exists.
  */
-function isChatWindow(window: BrowserWindow): boolean {
-  return window.webContents.getTitle() === "Clippy Chat";
+export async function createOrShowChatWindow() {
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    const [width, height] = chatWindow.getSize();
+    const position = getPopoverWindowPosition(mainWindow, { width, height });
+    chatWindow.setPosition(position.x, position.y);
+    chatWindow.show();
+    chatWindow.focus();
+    return;
+  }
+
+  const settings = getStateManager().store.get("settings");
+
+  chatWindow = new BrowserWindow({
+    width: 450,
+    height: 650,
+    frame: false,
+    roundedCorners: false,
+    minHeight: 400,
+    minWidth: 400,
+    alwaysOnTop: settings.chatAlwaysOnTop,
+    parent: mainWindow,
+    title: "Clippy Chat",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      sandbox: false,
+    },
+  });
+
+  const { width, height } = chatWindow.getBounds();
+  const position = getPopoverWindowPosition(mainWindow, { width, height });
+  chatWindow.setPosition(position.x, position.y);
+
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    chatWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL + "#chat");
+  } else {
+    chatWindow.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+      { hash: "chat" },
+    );
+  }
+
+  chatWindow.on("closed", () => {
+    chatWindow = undefined;
+  });
 }
 
 /**

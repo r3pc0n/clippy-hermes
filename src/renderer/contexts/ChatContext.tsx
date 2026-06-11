@@ -2,12 +2,14 @@ import {
   createContext,
   useContext,
   useState,
+  useRef,
   ReactNode,
   useEffect,
   useCallback,
 } from "react";
 import { Message } from "../components/Message";
-import { clippyApi, electronAi } from "../clippyApi";
+import { clippyApi } from "../clippyApi";
+import { createHermesSession } from "../hermesApi";
 import { SharedStateContext } from "./SharedStateContext";
 import { areAnyModelsReadyOrDownloading } from "../../helpers/model-helpers";
 import { WelcomeMessageContent } from "../components/WelcomeMessageContent";
@@ -15,13 +17,6 @@ import { ChatRecord, MessageRecord } from "../../types/interfaces";
 import { useDebugState } from "./DebugContext";
 import { ANIMATION_KEYS_BRACKETS } from "../clippy-animation-helpers";
 import { ErrorLoadModelMessageContent } from "../components/ErrorLoadModelMessageContent";
-
-import type {
-  LanguageModelPrompt,
-  LanguageModelCreateOptions,
-  LanguageModelPromptRole,
-  LanguageModelPromptType,
-} from "@electron/llm";
 
 type ClippyNamedStatus =
   | "welcome"
@@ -72,9 +67,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [isChatWindowOpen, setIsChatWindowOpen] = useState(false);
   const [hasPerformedStartupCheck, setHasPerformedStartupCheck] =
     useState(false);
+  const sessionPromptRef = useRef<string | null>(null);
 
   const getSystemPrompt = useCallback(() => {
-    return settings.systemPrompt.replace(
+    return (settings.systemPrompt ?? "").replace(
       "[LIST OF ANIMATIONS]",
       ANIMATION_KEYS_BRACKETS.join(", "),
     );
@@ -97,9 +93,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           setCurrentChatRecord(chatWithMessages.chat);
         }
 
-        await loadModel(
-          messagesToInitialPrompts(chatWithMessages?.messages || []),
-        );
+        await loadModel();
       } catch (error) {
         console.error(error);
       }
@@ -135,42 +129,33 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setMessages([]);
   }, [currentChatRecord, messages]);
 
-  const loadModel = useCallback(
-    async (initialPrompts: LanguageModelPrompt[] = []) => {
-      setIsModelLoaded(false);
+  const loadModel = useCallback(async () => {
+    const prompt = getSystemPrompt();
 
-      const options: LanguageModelCreateOptions = {
-        modelAlias: settings.selectedModel,
-        systemPrompt: getSystemPrompt(),
-        topK: settings.topK,
-        temperature: settings.temperature,
-        initialPrompts,
-      };
+    // Skip if we already have an active session for this exact prompt.
+    // Prevents duplicate session creation from StrictMode double-invocation
+    // and from SharedStateContext firing as state hydrates on startup.
+    if (prompt === sessionPromptRef.current) return;
+    sessionPromptRef.current = prompt;
 
-      console.log("Loading model with options:", options);
+    setIsModelLoaded(false);
 
-      try {
-        await electronAi.create(options);
-        setIsModelLoaded(true);
-      } catch (error) {
-        console.error(error);
+    try {
+      await createHermesSession(prompt);
+      setIsModelLoaded(true);
+      setStatus("idle");
+    } catch (error) {
+      sessionPromptRef.current = null; // allow retry on next call
+      console.error("loadModel error:", error);
 
-        addMessage({
-          id: crypto.randomUUID(),
-          children: <ErrorLoadModelMessageContent error={error} />,
-          sender: "clippy",
-          createdAt: Date.now(),
-        });
-      }
-    },
-    [
-      settings.selectedModel,
-      settings.systemPrompt,
-      settings.topK,
-      settings.temperature,
-      messages,
-    ],
-  );
+      addMessage({
+        id: crypto.randomUUID(),
+        children: <ErrorLoadModelMessageContent error={String(error)} />,
+        sender: "clippy",
+        createdAt: Date.now(),
+      });
+    }
+  }, [settings.systemPrompt]);
 
   const deleteChat = useCallback(
     async (chatId: string) => {
@@ -217,32 +202,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     });
   }, [messages]);
 
-  // Load the model when the selected model changes
-  // or when the system prompt, topK, or temperature change
+  // Re-create the Hermes session when the system prompt changes
   useEffect(() => {
     if (debug?.simulateDownload) {
       setIsModelLoaded(true);
       return;
     }
 
-    if (settings.selectedModel) {
-      loadModel();
-    } else if (!settings.selectedModel && isModelLoaded) {
-      electronAi
-        .destroy()
-        .then(() => {
-          setIsModelLoaded(false);
-        })
-        .catch((error) => {
-          console.error(error);
-        });
-    }
-  }, [
-    settings.selectedModel,
-    settings.systemPrompt,
-    settings.topK,
-    settings.temperature,
-  ]);
+    loadModel();
+  }, [settings.systemPrompt]);
 
   // If selectedModel is undefined or not available, set it to the first downloaded model
   useEffect(() => {
@@ -370,13 +338,3 @@ function getPreviewFromMessages(messages: Message[]): string {
   return messages[0].content.replace(/\n/g, " ").substring(0, 100);
 }
 
-function messagesToInitialPrompts(messages: Message[]): LanguageModelPrompt[] {
-  return messages.map((message) => ({
-    role:
-      message.sender === "clippy"
-        ? ("assistant" as LanguageModelPromptRole)
-        : ("user" as LanguageModelPromptRole),
-    type: "text" as LanguageModelPromptType,
-    content: message.content || "",
-  }));
-}

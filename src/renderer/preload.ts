@@ -99,6 +99,53 @@ const clippyApi: ClippyApi = {
   // Clipboard
   clipboardWrite: (data: Data) =>
     ipcRenderer.invoke(IpcMessages.CLIPBOARD_WRITE, data),
+
+  // Hermes
+  hermesCreateSession: (systemPrompt: string) =>
+    ipcRenderer.invoke(IpcMessages.HERMES_CREATE_SESSION, systemPrompt),
+  hermesStartStream: (message: string, requestUUID: string) =>
+    ipcRenderer.invoke(IpcMessages.HERMES_CHAT_STREAM, message, requestUUID),
+  hermesAbortRequest: (requestUUID: string) =>
+    ipcRenderer.invoke(IpcMessages.HERMES_ABORT_REQUEST, requestUUID),
+  onHermesChatChunk: (
+    callback: (requestUUID: string, chunk: string) => void,
+  ) => {
+    ipcRenderer.on(
+      IpcMessages.HERMES_CHAT_CHUNK,
+      (_event, requestUUID, chunk) => callback(requestUUID, chunk),
+    );
+  },
+  onHermesChatDone: (callback: (requestUUID: string) => void) => {
+    ipcRenderer.on(IpcMessages.HERMES_CHAT_DONE, (_event, requestUUID) =>
+      callback(requestUUID),
+    );
+  },
+  onHermesChatError: (
+    callback: (requestUUID: string, error: string) => void,
+  ) => {
+    ipcRenderer.on(
+      IpcMessages.HERMES_CHAT_ERROR,
+      (_event, requestUUID, error) => callback(requestUUID, error),
+    );
+  },
+  offHermesChatListeners: () => {
+    ipcRenderer.removeAllListeners(IpcMessages.HERMES_CHAT_CHUNK);
+    ipcRenderer.removeAllListeners(IpcMessages.HERMES_CHAT_DONE);
+    ipcRenderer.removeAllListeners(IpcMessages.HERMES_CHAT_ERROR);
+  },
+
+  // Chat window lifecycle
+  openChatWindow: () => ipcRenderer.invoke(IpcMessages.OPEN_CHAT_WINDOW),
+  triggerClippyAnimation: (key: string) =>
+    ipcRenderer.invoke(IpcMessages.SET_ANIMATION_KEY, key),
+  onAnimationKey: (callback: (key: string) => void) => {
+    ipcRenderer.on(IpcMessages.SET_ANIMATION_KEY, (_event, key) =>
+      callback(key),
+    );
+  },
+  offAnimationKey: () => {
+    ipcRenderer.removeAllListeners(IpcMessages.SET_ANIMATION_KEY);
+  },
 };
 
 contextBridge.exposeInMainWorld("clippy", clippyApi);

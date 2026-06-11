@@ -54,6 +54,23 @@ export type ClippyApi = {
   offNewChat: () => void;
   // Clipboard
   clipboardWrite: (data: Data) => Promise<void>;
+  // Hermes
+  hermesCreateSession: (systemPrompt: string) => Promise<string>;
+  hermesStartStream: (message: string, requestUUID: string) => Promise<void>;
+  hermesAbortRequest: (requestUUID: string) => Promise<void>;
+  onHermesChatChunk: (
+    callback: (requestUUID: string, chunk: string) => void,
+  ) => void;
+  onHermesChatDone: (callback: (requestUUID: string) => void) => void;
+  onHermesChatError: (
+    callback: (requestUUID: string, error: string) => void,
+  ) => void;
+  offHermesChatListeners: () => void;
+  // Chat window lifecycle
+  openChatWindow: () => Promise<void>;
+  triggerClippyAnimation: (key: string) => Promise<void>;
+  onAnimationKey: (callback: (key: string) => void) => void;
+  offAnimationKey: () => void;
 };
 
 declare global {

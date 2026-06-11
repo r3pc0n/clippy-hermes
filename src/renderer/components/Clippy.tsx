@@ -5,48 +5,58 @@ import {
   EMPTY_ANIMATION,
   getRandomIdleAnimation,
 } from "../clippy-animation-helpers";
-import { useChat } from "../contexts/ChatContext";
+import { clippyApi } from "../clippyApi";
 import { log } from "../logging";
 import { useDebugState } from "../contexts/DebugContext";
 
 const WAIT_TIME = 6000;
 
 export function Clippy() {
-  const {
-    animationKey,
-    status,
-    setStatus,
-    setIsChatWindowOpen,
-    isChatWindowOpen,
-  } = useChat();
   const { enableDragDebug } = useDebugState();
+  const [status, setStatus] = useState<"welcome" | "idle">("welcome");
   const [animation, setAnimation] = useState<Animation>(EMPTY_ANIMATION);
   const [animationTimeoutId, setAnimationTimeoutId] = useState<
     number | undefined
   >(undefined);
 
-  const playAnimation = useCallback((key: string) => {
-    if (ANIMATIONS[key]) {
-      log(`Playing animation`, { key });
+  const playAnimation = useCallback(
+    (key: string) => {
+      if (ANIMATIONS[key]) {
+        log(`Playing animation`, { key });
 
-      if (animationTimeoutId) {
-        window.clearTimeout(animationTimeoutId);
+        if (animationTimeoutId) {
+          window.clearTimeout(animationTimeoutId);
+        }
+
+        setAnimation(ANIMATIONS[key]);
+        setAnimationTimeoutId(
+          window.setTimeout(() => {
+            setAnimation(ANIMATIONS.Default);
+          }, ANIMATIONS[key].length + 200),
+        );
+      } else {
+        log(`Animation not found`, { key });
       }
+    },
+    [animationTimeoutId],
+  );
 
-      setAnimation(ANIMATIONS[key]);
-      setAnimationTimeoutId(
-        window.setTimeout(() => {
-          setAnimation(ANIMATIONS.Default);
-        }, ANIMATIONS[key].length + 200),
-      );
-    } else {
-      log(`Animation not found`, { key });
-    }
+  const openChat = useCallback(() => {
+    clippyApi.openChatWindow().catch(console.error);
   }, []);
 
-  const toggleChat = useCallback(() => {
-    setIsChatWindowOpen(!isChatWindowOpen);
-  }, [isChatWindowOpen, setIsChatWindowOpen]);
+  // Listen for animation keys forwarded from the chat window
+  useEffect(() => {
+    clippyApi.offAnimationKey();
+    clippyApi.onAnimationKey((key) => {
+      log(`New animation key`, { key });
+      playAnimation(key);
+    });
+
+    return () => {
+      clippyApi.offAnimationKey();
+    };
+  }, [playAnimation]);
 
   useEffect(() => {
     const playRandomIdleAnimation = () => {
@@ -55,7 +65,6 @@ export function Clippy() {
       const randomIdleAnimation = getRandomIdleAnimation(animation);
       setAnimation(randomIdleAnimation);
 
-      // Reset back to default after 6 seconds and schedule next animation
       setAnimationTimeoutId(
         window.setTimeout(() => {
           setAnimation(ANIMATIONS.Default);
@@ -77,18 +86,12 @@ export function Clippy() {
       }
     }
 
-    // Clean up timeouts when component unmounts or status changes
     return () => {
       if (animationTimeoutId) {
         window.clearTimeout(animationTimeoutId);
       }
     };
   }, [status]);
-
-  useEffect(() => {
-    log(`New animation key`, { animationKey });
-    playAnimation(animationKey);
-  }, [animationKey, playAnimation]);
 
   return (
     <div>
@@ -115,7 +118,7 @@ export function Clippy() {
             top: "2px",
             cursor: "help",
           }}
-          onClick={toggleChat}
+          onClick={openChat}
         ></div>
       </div>
       <img

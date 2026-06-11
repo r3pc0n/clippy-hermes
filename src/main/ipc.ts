@@ -3,6 +3,8 @@ import {
   toggleChatWindow,
   maximizeChatWindow,
   minimizeChatWindow,
+  createOrShowChatWindow,
+  getMainWindow,
 } from "./windows";
 import { IpcMessages } from "../ipc-messages";
 import { getModelManager } from "./models";
@@ -14,12 +16,17 @@ import { checkForUpdates } from "./update";
 import { getVersions } from "./helpers/getVersions";
 import { getClippyDebugInfo } from "./debug-clippy";
 import { getDebugManager } from "./debug";
+import * as hermesClient from "./hermesClient";
 
 export function setupIpcListeners() {
   // Window
   ipcMain.handle(IpcMessages.TOGGLE_CHAT_WINDOW, () => toggleChatWindow());
   ipcMain.handle(IpcMessages.MINIMIZE_CHAT_WINDOW, () => minimizeChatWindow());
   ipcMain.handle(IpcMessages.MAXIMIZE_CHAT_WINDOW, () => maximizeChatWindow());
+  ipcMain.handle(IpcMessages.OPEN_CHAT_WINDOW, () => createOrShowChatWindow());
+  ipcMain.handle(IpcMessages.SET_ANIMATION_KEY, (_, key: string) => {
+    getMainWindow()?.webContents.send(IpcMessages.SET_ANIMATION_KEY, key);
+  });
   ipcMain.handle(IpcMessages.POPUP_APP_MENU, () => getMainAppMenu().popup());
 
   // App
@@ -99,5 +106,30 @@ export function setupIpcListeners() {
   // Clipboard
   ipcMain.handle(IpcMessages.CLIPBOARD_WRITE, (_, data: Data) =>
     clipboard.write(data, "clipboard"),
+  );
+
+  // Hermes
+  ipcMain.handle(
+    IpcMessages.HERMES_CREATE_SESSION,
+    (_, systemPrompt: string) => hermesClient.createSession(systemPrompt),
+  );
+
+  ipcMain.handle(
+    IpcMessages.HERMES_CHAT_STREAM,
+    async (event, message: string, requestUUID: string) => {
+      await hermesClient.streamChat(
+        message,
+        requestUUID,
+        (chunk) =>
+          event.sender.send(IpcMessages.HERMES_CHAT_CHUNK, requestUUID, chunk),
+        () => event.sender.send(IpcMessages.HERMES_CHAT_DONE, requestUUID),
+        (error) =>
+          event.sender.send(IpcMessages.HERMES_CHAT_ERROR, requestUUID, error),
+      );
+    },
+  );
+
+  ipcMain.handle(IpcMessages.HERMES_ABORT_REQUEST, (_, requestUUID: string) =>
+    hermesClient.abortRequest(requestUUID),
   );
 }
