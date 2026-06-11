@@ -1,32 +1,71 @@
-# Clippy
+# clippy-hermes
 
-[Clippy](https://felixrieseberg.github.io/clippy/) let's you run a variety of large language models (LLMs) locally on your computer while sticking with a user interface of the 1990s. Through Llama.cpp, it supports models in the popular GGUF format, which is to say most publicly available models. It comes with one-click installation support for Google's Gemma3, Meta's Llama 3.2, Microsoft's Phi-4, and Qwen's Qwen3.
+A fork of [felixrieseberg/clippy](https://github.com/felixrieseberg/clippy) with the local LLM backend replaced by a self-hosted [Hermes](https://github.com/R3PC0N/hermes) agent API.
 
-It's a love letter and homage to the late, great Clippy, the assistant from Microsoft Office 1997. The character was designed by illustrator Kevan Atteberry, who created more than 15 potential characters for Microsoft's Office Assistants. This app is not affiliated, approved, or supported by Microsoft. Consider it software art. If you don't like it, consider it software satire.
+The Clippy UI, animations, and retro Windows 98 aesthetic are completely unchanged. What changed is where the intelligence comes from: instead of running a model in-process with node-llama-cpp, all inference goes through HTTP to a Hermes instance running on my homelab.
 
-It is also meant to be a reference implementation of [@electron/llm](https://github.com/electron/llm), hoping to help other developers of Electron apps make use of local language models.
+## What is Hermes?
 
-## Features
+Hermes is a self-hosted agent framework. It exposes a session-based HTTP API: you create a session (with a system prompt), then stream chat messages over SSE. Clippy communicates with it over the local network.
 
-- Simple, familiar, and classic chat interface. Send messages to your models, get a response.
-- Batteries included: No complicated setup. Just open the app and chat away. Thanks to llama.cpp and `node-llama-cpp`, the app will automatically discover the most efficient way to run your models (Metal, CUDA, Vulkan, etc).
-- Custom models, prompts, and parameters: Load your own downloaded models and play with the settings.
-- Offline, local, free: Everything runs on your computers. The only network request Clippy makes is to check for updates (which you can disable).
+## How it works
 
-## Non-Features
+1. On startup, the chat window calls `POST /api/sessions` to create a Hermes session with the configured system prompt.
+2. Each user message is sent as `POST /api/sessions/{id}/chat/stream`.
+3. The server responds with SSE events (`assistant.delta` for content chunks, `done` to signal completion).
+4. Chunks stream into the chat window in real time. The model can prefix its response with an animation tag like `[Wave]` to trigger a Clippy animation.
 
-Countless little chat apps for local LLMs exist out there. Many of them are likely better - and that's okay. This project isn't trying to be your best chat bot. I'd like you to enjoy a weird mix of nostalgia for 1990s technology paired with one the most magical technologies we can run on our computers in 2025.
+All HTTP calls run in the Electron main process to avoid CORS restrictions. The renderer communicates with main via IPC.
 
-## Downloading More Models
+## Setup
 
-Clippy supports (thanks to Llama.cpp) most GGUF models. You can find GGUF models in plenty of online sources - I tend to go with models quantized by [TheBloke](https://huggingface.co/thebloke) or [Unsloth](https://huggingface.co/unsloth).
+### Prerequisites
+
+- A running Hermes instance on your network
+- An API key
+
+### Configuration
+
+**1. API key**
+
+Create `~/.hermes/.env` with your API key:
+
+```
+API_SERVER_KEY=your-key-here
+```
+
+**2. Server URL**
+
+Edit `src/main/hermesClient.ts` and set `BASE_URL` to your Hermes server:
+
+```typescript
+const BASE_URL = "http://192.168.x.x:8642";
+```
+
+**3. Install and run**
+
+```bash
+npm install
+npm start
+```
+
+## Architecture notes
+
+- **`src/main/hermesClient.ts`** — HTTP client (session creation, SSE streaming, abort)
+- **`src/renderer/hermesApi.ts`** — Converts IPC events into an `AsyncGenerator<string>` for the chat component
+- **`src/renderer/components/ChatApp.tsx`** — Root component for the chat window (separate `BrowserWindow` created from main, loaded at `index.html#chat`)
+- The chat window and Clippy character window are separate `BrowserWindow` instances. Animation triggers are forwarded from the chat window to the main window over IPC.
 
 ## Acknowledgements
 
-Thanks to:
+- **[Felix Rieseberg](https://github.com/felixrieseberg)** for the original [Clippy](https://felixrieseberg.github.io/clippy/) app — the UI, animations, chat interface, and Windows 98 aesthetic are entirely his work.
+- **[Kevan Atteberry](https://www.kevanatteberry.com/)** for designing the Clippy character
+- **[Jordan Scales (@jdan)](https://github.com/jdan)** for the Windows 98 CSS
+- **[Pooya Parsa (@pi0)](https://github.com/pi0)** for extracting Clippy's animation frame lengths
+- **[node-llama-cpp](https://github.com/withcatai/node-llama-cpp)** — used in the upstream project, removed here
 
-- I am so grateful to Microsoft - not only for everything they've done for Electron, but also for giving us one of the most iconic characters and designs of computing history.
-- [Kevan Atteberry](https://www.kevanatteberry.com/) for Clippy
-- [Jordan Scales (@jdan)](https://github.com/jdan) for the Windows 98 design
-- [Pooya Parsa (@pi0)](https://github.com/pi0) for being the (as far as I know) person to extract the length of each frame from the Clippy spritesheet.
-- [node-llama-cpp](https://github.com/withcatai/node-llama-cpp) for squeezing llama.cpp into Node.js
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+The Clippy character is a trademark of Microsoft Corporation. This project is not affiliated with, endorsed by, or supported by Microsoft. The character is used here as software art/satire in the spirit of the original project.
